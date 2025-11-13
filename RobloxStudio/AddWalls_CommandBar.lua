@@ -1,0 +1,218 @@
+-- ADD WALLS - Command Bar Script
+-- Paste this into Roblox Studio Command Bar
+-- This script adds walls to your map with various options
+
+print("=== Add Walls Script ===")
+print("Choose an option:")
+print("1. Add perimeter walls around the map")
+print("2. Add walls at specific positions")
+print("3. Add walls between zones")
+print("4. Add custom walls")
+
+-- Configuration
+local wallHeight = 50 -- Height of walls in studs
+local wallThickness = 2 -- Thickness of walls in studs
+local wallMaterial = Enum.Material.Brick
+local wallColor = BrickColor.new("Dark stone grey")
+local wallAnchored = true
+local wallCanCollide = true
+
+-- Function to create a single wall
+local function createWall(position, size, name)
+	local wall = Instance.new("Part")
+	wall.Name = name or "Wall"
+	wall.Size = size
+	wall.Position = position
+	wall.Anchored = wallAnchored
+	wall.CanCollide = wallCanCollide
+	wall.Material = wallMaterial
+	wall.BrickColor = wallColor
+	wall.Parent = workspace
+	
+	-- Create a folder for walls if it doesn't exist
+	local wallsFolder = workspace:FindFirstChild("Walls")
+	if not wallsFolder then
+		wallsFolder = Instance.new("Folder")
+		wallsFolder.Name = "Walls"
+		wallsFolder.Parent = workspace
+	end
+	wall.Parent = wallsFolder
+	
+	return wall
+end
+
+-- Option 1: Add perimeter walls around the map
+local function addPerimeterWalls()
+	print("\n📐 Adding perimeter walls...")
+	
+	-- Find Baseplate to determine map bounds (try multiple name variations)
+	local baseplate = workspace:FindFirstChild("Baseplate")
+	if not baseplate then
+		baseplate = workspace:FindFirstChild("baseplate")
+	end
+	if not baseplate then
+		baseplate = workspace:FindFirstChild("BasePlate")
+	end
+	if not baseplate then
+		-- Search recursively in workspace for Baseplate
+		local function findBaseplateRecursive(parent)
+			for _, obj in ipairs(parent:GetChildren()) do
+				if obj:IsA("Part") and (obj.Name:lower():find("baseplate") or obj.Name:lower():find("base plate")) then
+					return obj
+				end
+				if obj:IsA("Model") or obj:IsA("Folder") then
+					local found = findBaseplateRecursive(obj)
+					if found then return found end
+				end
+			end
+			return nil
+		end
+		baseplate = findBaseplateRecursive(workspace)
+	end
+	
+	if not baseplate then
+		warn("⚠ No Baseplate found! Searching workspace for all parts...")
+		-- List all parts in workspace for debugging
+		print("  Parts in workspace:")
+		local partCount = 0
+		for _, obj in ipairs(workspace:GetChildren()) do
+			if obj:IsA("Part") then
+				partCount = partCount + 1
+				print("    - " .. obj.Name .. " | Size: " .. tostring(obj.Size) .. " | Position: " .. tostring(obj.Position))
+			end
+		end
+		if partCount == 0 then
+			print("    (No parts found directly in workspace - they may be in Models/Folders)")
+		end
+		warn("⚠ Please create a part named 'Baseplate' or manually specify bounds")
+		return
+	end
+	
+	-- Verify it's actually named Baseplate (not just a large part)
+	if not (baseplate.Name:lower():find("baseplate") or baseplate.Name:lower():find("base plate")) then
+		warn("⚠ Found part '" .. baseplate.Name .. "' but it's not named 'Baseplate'")
+		warn("⚠ Using it anyway, but make sure this is correct!")
+	end
+	
+	print("  ✓ Found baseplate: " .. baseplate.Name)
+	print("    Size: " .. tostring(baseplate.Size))
+	print("    Position: " .. tostring(baseplate.Position))
+	
+	local baseplateSize = baseplate.Size
+	local baseplatePos = baseplate.Position
+	local halfSizeX = baseplateSize.X / 2
+	local halfSizeZ = baseplateSize.Z / 2
+	local wallY = baseplatePos.Y + (wallHeight / 2)
+	
+	-- North wall (positive Z)
+	createWall(
+		Vector3.new(baseplatePos.X, wallY, baseplatePos.Z + halfSizeZ),
+		Vector3.new(baseplateSize.X + (wallThickness * 2), wallHeight, wallThickness),
+		"NorthWall"
+	)
+	
+	-- South wall (negative Z)
+	createWall(
+		Vector3.new(baseplatePos.X, wallY, baseplatePos.Z - halfSizeZ),
+		Vector3.new(baseplateSize.X + (wallThickness * 2), wallHeight, wallThickness),
+		"SouthWall"
+	)
+	
+	-- East wall (positive X)
+	createWall(
+		Vector3.new(baseplatePos.X + halfSizeX, wallY, baseplatePos.Z),
+		Vector3.new(wallThickness, wallHeight, baseplateSize.Z),
+		"EastWall"
+	)
+	
+	-- West wall (negative X)
+	createWall(
+		Vector3.new(baseplatePos.X - halfSizeX, wallY, baseplatePos.Z),
+		Vector3.new(wallThickness, wallHeight, baseplateSize.Z),
+		"WestWall"
+	)
+	
+	print("✓ Perimeter walls added!")
+end
+
+-- Option 2: Add walls at specific positions
+local function addWallsAtPositions()
+	print("\n📍 Adding walls at specific positions...")
+	
+	-- Example positions (you can modify these)
+	local wallPositions = {
+		{pos = Vector3.new(0, 25, 0), size = Vector3.new(10, wallHeight, wallThickness), name = "Wall1"},
+		{pos = Vector3.new(50, 25, 0), size = Vector3.new(10, wallHeight, wallThickness), name = "Wall2"},
+		{pos = Vector3.new(100, 25, 0), size = Vector3.new(10, wallHeight, wallThickness), name = "Wall3"},
+	}
+	
+	for i, wallData in ipairs(wallPositions) do
+		createWall(wallData.pos, wallData.size, wallData.name)
+		print("  ✓ Created " .. wallData.name)
+	end
+	
+	print("✓ Custom walls added!")
+	print("💡 Modify wallPositions in the script to add more walls")
+end
+
+-- Option 3: Add walls between zones (based on GameMap.txt)
+local function addWallsBetweenZones()
+	print("\n🗺️ Adding walls between zones...")
+	
+	-- Zone boundaries (approximate - adjust based on your actual map)
+	-- These are example positions - you'll need to adjust to match your map
+	local zoneWalls = {
+		-- Wall between Red Base and Zone 1
+		{pos = Vector3.new(-100, 25, -40), size = Vector3.new(wallThickness, wallHeight, 50), name = "RedBase_Wall"},
+		-- Wall between Blue Base and Zone 5
+		{pos = Vector3.new(900, 25, 200), size = Vector3.new(wallThickness, wallHeight, 50), name = "BlueBase_Wall"},
+		-- Wall in middle area
+		{pos = Vector3.new(400, 25, 100), size = Vector3.new(100, wallHeight, wallThickness), name = "Middle_Wall"},
+	}
+	
+	for i, wallData in ipairs(zoneWalls) do
+		createWall(wallData.pos, wallData.size, wallData.name)
+		print("  ✓ Created " .. wallData.name)
+	end
+	
+	print("✓ Zone walls added!")
+	print("💡 Adjust positions in zoneWalls to match your actual map layout")
+end
+
+-- Option 4: Add custom walls with user input
+local function addCustomWall()
+	print("\n🎨 Adding custom wall...")
+	print("Using default settings:")
+	print("  Position: (0, 25, 0)")
+	print("  Size: (20, " .. wallHeight .. ", " .. wallThickness .. ")")
+	
+	local wall = createWall(
+		Vector3.new(0, 25, 0),
+		Vector3.new(20, wallHeight, wallThickness),
+		"CustomWall"
+	)
+	
+	print("✓ Custom wall created!")
+	print("💡 Modify the script to change position, size, or properties")
+end
+
+-- Main execution - choose which option to run
+-- Change this number to run different options:
+local option = 1 -- Change to 1, 2, 3, or 4
+
+if option == 1 then
+	addPerimeterWalls()
+elseif option == 2 then
+	addWallsAtPositions()
+elseif option == 3 then
+	addWallsBetweenZones()
+elseif option == 4 then
+	addCustomWall()
+else
+	warn("Invalid option! Choose 1, 2, 3, or 4")
+end
+
+print("\n✅ Wall creation complete!")
+print("💡 All walls are in workspace > Walls folder")
+print("💡 To modify walls, change the 'option' variable at the bottom of the script")
+

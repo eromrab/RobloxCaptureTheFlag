@@ -3,14 +3,29 @@
 -- This script adds walls to your map with various options
 
 print("=== Add Walls Script ===")
-print("Choose an option:")
+
+-- Delete all existing walls and roof in the Walls folder before creating new ones
+local wallsFolder = workspace:FindFirstChild("Walls")
+if wallsFolder then
+	print("🗑️ Deleting existing walls and roof...")
+	local deletedCount = 0
+	for _, child in ipairs(wallsFolder:GetChildren()) do
+		child:Destroy()
+		deletedCount = deletedCount + 1
+	end
+	print("  ✓ Deleted " .. deletedCount .. " existing object(s) (walls and roof)")
+else
+	print("  ✓ No existing Walls folder found")
+end
+
+print("\nChoose an option:")
 print("1. Add perimeter walls around the map")
 print("2. Add walls at specific positions")
 print("3. Add walls between zones")
 print("4. Add custom walls")
 
 -- Configuration
-local wallHeight = 50 -- Height of walls in studs
+local wallHeight = 150 -- Height of walls in studs (3x higher than before)
 local wallThickness = 2 -- Thickness of walls in studs
 local wallMaterial = Enum.Material.Brick
 local wallColor = BrickColor.new("Dark stone grey")
@@ -27,6 +42,7 @@ local function createWall(position, size, name)
 	wall.CanCollide = wallCanCollide
 	wall.Material = wallMaterial
 	wall.BrickColor = wallColor
+	wall.CastShadow = true -- Walls cast shadows
 	wall.Parent = workspace
 	
 	-- Create a folder for walls if it doesn't exist
@@ -39,6 +55,37 @@ local function createWall(position, size, name)
 	wall.Parent = wallsFolder
 	
 	return wall
+end
+
+-- Function to create a glass roof
+local function createRoof(baseplateSize, baseplatePos, roofHeight)
+	print("\n🏠 Adding glass roof...")
+	
+	local roofThickness = 1 -- Thin roof
+	local roofY = baseplatePos.Y + roofHeight + (roofThickness / 2)
+	
+	local roof = Instance.new("Part")
+	roof.Name = "Roof"
+	roof.Size = Vector3.new(baseplateSize.X, roofThickness, baseplateSize.Z)
+	roof.Position = Vector3.new(baseplatePos.X, roofY, baseplatePos.Z)
+	roof.Anchored = true
+	roof.CanCollide = true
+	roof.Material = Enum.Material.Glass -- Glass material for light
+	roof.BrickColor = BrickColor.new("Light blue") -- Light blue tint for glass
+	roof.Transparency = 0.3 -- Slightly transparent
+	roof.CastShadow = false -- Roof doesn't cast shadows either
+	
+	-- Get or create Walls folder
+	local wallsFolder = workspace:FindFirstChild("Walls")
+	if not wallsFolder then
+		wallsFolder = Instance.new("Folder")
+		wallsFolder.Name = "Walls"
+		wallsFolder.Parent = workspace
+	end
+	roof.Parent = wallsFolder
+	
+	print("  ✓ Glass roof created at height: " .. roofY)
+	return roof
 end
 
 -- Option 1: Add perimeter walls around the map
@@ -132,7 +179,10 @@ local function addPerimeterWalls()
 		"WestWall"
 	)
 	
-	print("✓ Perimeter walls added!")
+	-- Add glass roof
+	createRoof(baseplateSize, baseplatePos, wallHeight)
+	
+	print("✓ Perimeter walls and roof added!")
 end
 
 -- Option 2: Add walls at specific positions
@@ -213,6 +263,7 @@ else
 end
 
 print("\n✅ Wall creation complete!")
-print("💡 All walls are in workspace > Walls folder")
+print("💡 All walls and roof are in workspace > Walls folder")
+print("💡 Walls cast shadows, and roof is made of glass for natural light")
 print("💡 To modify walls, change the 'option' variable at the bottom of the script")
 

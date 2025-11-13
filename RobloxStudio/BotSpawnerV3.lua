@@ -11,18 +11,39 @@ local RunService = game:GetService("RunService")
 -- print("=== Smart Bot Spawner (Script Version) ===")
 -- print("Bot spawning will start automatically...")
 
--- Function to find ground position (top of Baseplate)
+-- Function to find ground position using raycasting (works with terrain and parts)
 local function findGroundPosition(startPosition)
-	-- Find Baseplate in workspace
-	local baseplate = workspace:FindFirstChild("Baseplate")
+	-- Raycast downward to find terrain or parts
+	local rayOrigin = Vector3.new(startPosition.X, startPosition.Y + 100, startPosition.Z) -- Start high above
+	local rayDirection = Vector3.new(0, -200, 0) -- Cast down 200 studs
+	local raycastParams = RaycastParams.new()
+	raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+	raycastParams.FilterDescendantsInstances = {} -- Will filter out bots and players
 	
-	if baseplate and baseplate:IsA("Part") then
-		-- Use top of Baseplate (Position.Y + Size.Y/2)
-		local groundY = baseplate.Position.Y + (baseplate.Size.Y / 2)
-		return Vector3.new(startPosition.X, groundY + 2, startPosition.Z) -- Spawn 2 studs above baseplate
+	-- Filter out bots and players from raycast
+	local filterList = {}
+	for _, obj in ipairs(workspace:GetChildren()) do
+		if obj:IsA("Model") and (obj.Name:find("_Bot_") or obj:FindFirstChildOfClass("Humanoid")) then
+			table.insert(filterList, obj)
+		end
+	end
+	raycastParams.FilterDescendantsInstances = filterList
+	
+	local raycastResult = workspace:Raycast(rayOrigin, rayDirection, raycastParams)
+	
+	if raycastResult then
+		-- Found terrain or part - spawn 2 studs above it
+		return Vector3.new(startPosition.X, raycastResult.Position.Y + 2, startPosition.Z)
 	else
-		-- Fallback: use Y = 0.5 (typical baseplate top)
-		return Vector3.new(startPosition.X, 0.5, startPosition.Z)
+		-- Fallback: try baseplate
+		local baseplate = workspace:FindFirstChild("Baseplate")
+		if baseplate and baseplate:IsA("Part") then
+			local groundY = baseplate.Position.Y + (baseplate.Size.Y / 2)
+			return Vector3.new(startPosition.X, groundY + 2, startPosition.Z)
+		else
+			-- Last resort: use Y = 0.5
+			return Vector3.new(startPosition.X, 0.5, startPosition.Z)
+		end
 	end
 end
 
@@ -110,11 +131,26 @@ local function createSimpleBot(position, teamColor, teamName, enemySpawnPos)
 	-- AI variables
 	local humanoidReady = false
 	
-	-- Get baseplate Y position for constraining bots
-	local baseplate = workspace:FindFirstChild("Baseplate")
-	local baseplateY = 0.5
-	if baseplate and baseplate:IsA("Part") then
-		baseplateY = baseplate.Position.Y + (baseplate.Size.Y / 2)
+	-- Helper function to find terrain height at a position (for target positioning)
+	local function getTerrainHeight(x, z)
+		local rayOrigin = Vector3.new(x, rootPart.Position.Y + 100, z)
+		local rayDirection = Vector3.new(0, -200, 0)
+		local raycastParams = RaycastParams.new()
+		raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+		local filterList = {bot} -- Filter out this bot
+		raycastParams.FilterDescendantsInstances = filterList
+		
+		local raycastResult = workspace:Raycast(rayOrigin, rayDirection, raycastParams)
+		if raycastResult then
+			return raycastResult.Position.Y
+		else
+			-- Fallback to baseplate
+			local baseplate = workspace:FindFirstChild("Baseplate")
+			if baseplate and baseplate:IsA("Part") then
+				return baseplate.Position.Y + (baseplate.Size.Y / 2)
+			end
+			return rootPart.Position.Y
+		end
 	end
 	
 	-- Wait for Humanoid to detect HumanoidRootPart, then start AI
@@ -172,11 +208,14 @@ local function createSimpleBot(position, teamColor, teamName, enemySpawnPos)
 		end
 		lastMoveTime = currentTime
 		
-		-- Keep bot on baseplate (constrain Y position)
+		-- Get bot position (let it move naturally on terrain)
 		local botPos = rootPart.Position
-		if math.abs(botPos.Y - baseplateY) > 5 then
-			-- Bot is too far from baseplate, teleport back
-			local correctedPos = Vector3.new(botPos.X, baseplateY + 2, botPos.Z)
+		
+		-- Safety check: if bot falls too far below terrain, correct it
+		local terrainHeight = getTerrainHeight(botPos.X, botPos.Z)
+		if botPos.Y < terrainHeight - 10 then
+			-- Bot fell through terrain - correct position
+			local correctedPos = Vector3.new(botPos.X, terrainHeight + 2, botPos.Z)
 			rootPart.Position = correctedPos
 			botPos = correctedPos
 		end
@@ -218,9 +257,11 @@ local function createSimpleBot(position, teamColor, teamName, enemySpawnPos)
 			lastPositionTime = currentTime
 		end
 		
-		-- Target: enemy spawn position (on baseplate)
+		-- Target: enemy spawn position (on terrain)
 		if enemySpawnPos then
-			local baseTargetPos = Vector3.new(enemySpawnPos.X, baseplateY + 2, enemySpawnPos.Z)
+			-- Find terrain height at enemy spawn location
+			local enemyTerrainHeight = getTerrainHeight(enemySpawnPos.X, enemySpawnPos.Z)
+			local baseTargetPos = Vector3.new(enemySpawnPos.X, enemyTerrainHeight + 2, enemySpawnPos.Z)
 			
 			-- Apply direction offset if bot is stuck
 			local targetPos = baseTargetPos
@@ -243,7 +284,9 @@ local function createSimpleBot(position, teamColor, teamName, enemySpawnPos)
 				-- Create new target position at same distance but rotated direction
 				local distanceToEnemy = (baseTargetPos - botPos).Magnitude
 				targetPos = botPos + (rotatedDirection * math.min(distanceToEnemy, 50)) -- Cap at 50 studs ahead
-				targetPos = Vector3.new(targetPos.X, baseplateY + 2, targetPos.Z)
+				-- Find terrain height at rotated target position
+				local rotatedTerrainHeight = getTerrainHeight(targetPos.X, targetPos.Z)
+				targetPos = Vector3.new(targetPos.X, rotatedTerrainHeight + 2, targetPos.Z)
 			end
 			
 			-- Check if bot has reached enemy spawn (within 10 studs)
@@ -273,9 +316,9 @@ local function createSimpleBot(position, teamColor, teamName, enemySpawnPos)
 			if success and path.Status == Enum.PathStatus.Success then
 				local waypoints = path:GetWaypoints()
 				if #waypoints > 1 then
-					-- Move to next waypoint (ensure it's on baseplate)
+					-- Move to next waypoint (pathfinding handles terrain automatically)
 					local waypointPos = waypoints[2].Position
-					waypointPos = Vector3.new(waypointPos.X, baseplateY + 2, waypointPos.Z)
+					-- Pathfinding waypoints are already on terrain, so use them as-is
 					humanoid:MoveTo(waypointPos)
 				else
 					-- If only one waypoint, move directly to target

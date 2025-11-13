@@ -1,0 +1,157 @@
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+
+local BlockConfig = require(ReplicatedStorage:WaitForChild("BlockConfig"))
+local RequestPlacement = ReplicatedStorage:WaitForChild("RequestBlockPlacement")
+
+local NORMAL_ID_TO_VECTOR = {
+	[Enum.NormalId.Top] = Vector3.new(0, 1, 0),
+	[Enum.NormalId.Bottom] = Vector3.new(0, -1, 0),
+	[Enum.NormalId.Front] = Vector3.new(0, 0, -1),
+	[Enum.NormalId.Back] = Vector3.new(0, 0, 1),
+	[Enum.NormalId.Left] = Vector3.new(-1, 0, 0),
+	[Enum.NormalId.Right] = Vector3.new(1, 0, 0),
+}
+
+local tool = script.Parent
+local player = Players.LocalPlayer
+local mouse = player:GetMouse()
+
+local preview
+local placing = false
+
+local function snapToGrid(position)
+	local size = BlockConfig.BlockSize
+	return Vector3.new(
+		math.floor(position.X / size) * size + size / 2,
+		math.floor(position.Y / size) * size + size / 2,
+		math.floor(position.Z / size) * size + size / 2
+	)
+end
+
+local function getHeadPosition()
+	local character = player.Character
+	if not character then return nil end
+	local head = character:FindFirstChild("Head") or character:FindFirstChild("HumanoidRootPart")
+	return head and head.Position or nil
+end
+
+-- List of zone parts that should be ignored by block placement
+local ZONE_PART_NAMES = {
+	"TeamABaseZoneWall",
+	"TeamAMidpointZoneWall",
+	"TeamBMidpointZoneWall",
+	"TeamBBaseZoneWall",
+	"TeamABaseFloor",
+	"TeamAZoneFloor",
+	"NeutralZoneFloor",
+	"TeamBZoneFloor",
+	"TeamBBaseFloor",
+}
+
+local function isZonePart(part)
+	if not part then return false end
+	-- Check by name
+	for _, zoneName in ipairs(ZONE_PART_NAMES) do
+		if part.Name == zoneName then
+			return true
+		end
+	end
+	-- Check by tag (if using the MakeZonesInvisibleToBlocks script)
+	return part:FindFirstChild("ZonePart") ~= nil
+end
+
+local function createPreview()
+	if preview then return end
+	preview = Instance.new("Part")
+	preview.Size = Vector3.new(BlockConfig.BlockSize, BlockConfig.BlockSize, BlockConfig.BlockSize)
+	preview.Anchored = true
+	preview.CanCollide = false
+	preview.Material = BlockConfig.PreviewMaterial
+	preview.Color = BlockConfig.PreviewColor
+	preview.Transparency = 0.5
+	preview.Name = "BlockPreview"
+	preview.Parent = workspace
+	-- Ensure the preview doesn't interfere with targeting
+	mouse.TargetFilter = preview
+end
+
+local function removePreview()
+	if preview then
+		preview:Destroy()
+		preview = nil
+	end
+	-- Clear target filter when not placing
+	mouse.TargetFilter = nil
+end
+
+local function updatePreview()
+	if not placing or not preview then return end
+	local position
+
+	local targetPart = mouse.Target
+	-- Ignore zone parts - they shouldn't interfere with block placement
+	if targetPart and not isZonePart(targetPart) and targetPart:IsA("BasePart") and targetPart.Name == BlockConfig.BlockName then
+		local surface = mouse.TargetSurface
+		local normal = surface and NORMAL_ID_TO_VECTOR[surface]
+		if normal then
+			local size = BlockConfig.BlockSize
+			local halfBlock = Vector3.new(size, size, size) * 0.5
+			local halfTarget = targetPart.Size * 0.5
+			local offset = Vector3.new(
+				normal.X * (halfTarget.X + halfBlock.X),
+				normal.Y * (halfTarget.Y + halfBlock.Y),
+				normal.Z * (halfTarget.Z + halfBlock.Z)
+			)
+			position = targetPart.Position + offset
+		end
+	end
+
+	-- If targeting a zone part, use mouse.Hit position instead
+	if not position and mouse.Hit then
+		position = mouse.Hit.Position
+	end
+
+	if not position then
+		preview.Transparency = 1
+		return
+	end
+
+	local snappedPosition = snapToGrid(position)
+	local headPos = getHeadPosition()
+	if not headPos then
+		preview.Transparency = 1
+		return
+	end
+
+	local distance = (snappedPosition - headPos).Magnitude
+	if distance > BlockConfig.MaxPlacementDistance then
+		preview.Transparency = 1
+		return
+	end
+
+	preview.Transparency = 0.5
+	preview.Position = snappedPosition
+end
+
+local function requestPlacement(position)
+	RequestPlacement:FireServer(position)
+end
+
+tool.Equipped:Connect(function()
+	placing = true
+	createPreview()
+
+	mouse.Button1Down:Connect(function()
+		if not placing or not preview then return end
+		requestPlacement(preview.Position)
+	end)
+end)
+
+tool.Unequipped:Connect(function()
+	placing = false
+	removePreview()
+end)
+
+RunService.RenderStepped:Connect(updatePreview)

@@ -68,8 +68,8 @@ local function findGroundPosition(startPosition)
 			fallbackY = 10  -- If spawn is too high, use safe default
 		end
 		return Vector3.new(startPosition.X, fallbackY + 2, startPosition.Z)
-	end
-end
+			end
+		end
 
 -- Simple bot creation (matching existing bot structure)
 local function createSimpleBot(position, teamColor, teamName, enemySpawnPos, botName)
@@ -79,13 +79,13 @@ local function createSimpleBot(position, teamColor, teamName, enemySpawnPos, bot
 			if obj:IsA("SpawnLocation") then
 				if teamName == "Red Team" or teamName:find("Red") then
 					if obj.Name:find("Red") or obj.TeamColor == BrickColor.new("Bright red") then
-						return obj
-					end
+				return obj
+			end
 				else
 					if obj.Name:find("Blue") or obj.TeamColor == BrickColor.new("Bright blue") then
-						return obj
-					end
-				end
+				return obj
+			end
+			end
 			elseif obj:IsA("Folder") or obj:IsA("Model") then
 				local found = findSpawnLocationRecursive(obj, teamName)
 				if found then return found end
@@ -161,13 +161,13 @@ local function createSimpleBot(position, teamColor, teamName, enemySpawnPos, bot
 		-- Use the exact same raycast as the diagnostic (which works correctly)
 		local rayOrigin = Vector3.new(x, 500, z)
 		local rayDirection = Vector3.new(0, -1000, 0)
-		local raycastParams = RaycastParams.new()
-		raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+			local raycastParams = RaycastParams.new()
+			raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
 		raycastParams.FilterDescendantsInstances = {} -- Empty filter list like diagnostic
 
-		local raycastResult = workspace:Raycast(rayOrigin, rayDirection, raycastParams)
+			local raycastResult = workspace:Raycast(rayOrigin, rayDirection, raycastParams)
 
-		if raycastResult then
+			if raycastResult then
 			local hitPart = raycastResult.Instance
 			-- Prioritize terrain hits (this is what the diagnostic finds)
 			if hitPart and (hitPart.Name == "Terrain" or hitPart:IsDescendantOf(workspace.Terrain)) then
@@ -180,8 +180,8 @@ local function createSimpleBot(position, teamColor, teamName, enemySpawnPos, bot
 				if not hitPart:IsA("SpawnLocation") then
 					return raycastResult.Position.Y
 				end
-			end
 		end
+	end
 
 		-- Fallback: Use terrain height estimate (terrain is typically around 140-143)
 		return 140
@@ -479,8 +479,8 @@ local function createSimpleBot(position, teamColor, teamName, enemySpawnPos, bot
 			-- Only use result if it's at a reasonable height (above -50, below 200)
 			if raycastResult.Position.Y > -50 and raycastResult.Position.Y < 200 then
 				return raycastResult.Position.Y
-			end
 		end
+	end
 
 		-- Fallback to baseplate top
 		local baseplate = workspace:FindFirstChild("Baseplate")
@@ -814,8 +814,8 @@ local function findSpawnLocationRecursive(parent, teamName)
 			if teamName == "Red Team" or teamName:find("Red") then
 				if obj.Name:find("Red") or obj.TeamColor == BrickColor.new("Bright red") or obj.TeamColor == BrickColor.new("Really red") then
 					return obj
-				end
-			else
+					end
+				else
 				if obj.Name:find("Blue") or obj.TeamColor == BrickColor.new("Bright blue") then
 					return obj
 				end
@@ -841,8 +841,8 @@ if not blueSpawn then
 	blueSpawn = findSpawnLocationRecursive(workspace, "Blue Team")
 	if blueSpawn then
 		print("  ✓ Found Blue spawn (recursive): " .. blueSpawn.Name .. " in " .. (blueSpawn.Parent and blueSpawn.Parent.Name or "workspace"))
-	end
-end
+				end
+			end
 
 -- Use default positions if spawn locations not found
 local redSpawnPos = redSpawn and redSpawn.Position or Vector3.new(-160, 10, -40)
@@ -879,8 +879,8 @@ local function adjustSpawnLocationsToTerrain()
 			elseif obj:IsA("Folder") or obj:IsA("Model") then
 				findSpawnLocationsRecursive(obj, results)
 			end
-		end
-	end
+						end
+					end
 
 	local spawnLocations = {}
 	findSpawnLocationsRecursive(workspace, spawnLocations)
@@ -1172,13 +1172,13 @@ local function cleanupOrphanedParts()
 					obj:Destroy()
 					orphanedCount = orphanedCount + 1
 				end
-			end
 		end
+	end
 	end
 	if orphanedCount > 0 then
 		print("  🧹 Cleaned up " .. orphanedCount .. " orphaned part(s) from sky")
+		end
 	end
-end
 
 -- Run cleanup periodically (every 30 seconds)
 spawn(function()
@@ -1214,8 +1214,8 @@ Players.PlayerAdded:Connect(function(player)
 						else
 							if obj.Name:find("Blue") or obj.TeamColor == BrickColor.new("Bright blue") then
 								return obj
-							end
-						end
+					end
+				end
 					elseif obj:IsA("Folder") or obj:IsA("Model") then
 						local found = findSpawnRecursive(obj, teamName)
 						if found then return found end
@@ -1237,8 +1237,8 @@ Players.PlayerAdded:Connect(function(player)
 				blueSpawn = newBlueSpawn
 				blueSpawnPos = newBlueSpawn.Position
 				print("  ✓ Updated Blue spawn position: " .. tostring(blueSpawnPos))
+				end
 			end
-		end
 	end)
 end)
 
@@ -1262,8 +1262,8 @@ spawn(function()
 		task.wait(5)
 		updateTeamBotList(redTeam)
 		updateTeamBotList(blueTeam)
-	end
-end)
+		end
+	end)
 
 -- Create a flag in workspace to control spawning
 local spawnFlag = workspace:FindFirstChild("BotSpawningEnabled")
@@ -1321,7 +1321,7 @@ spawn(function()
 
 			-- Check if game is still running
 			if not workspace or not workspace.Parent then
-				return
+		return
 			end
 		end
 

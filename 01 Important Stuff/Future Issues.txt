@@ -1,0 +1,4 @@
+Minimap doesn't have the blue team side terrain, only red.  Is it not capturing the mirror?
+
+image.png
+

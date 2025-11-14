@@ -1,0 +1,321 @@
+-- Team Selection Handler
+
+-- Place this in ServerScriptService
+
+-- This script handles team selection and ensures players respawn at their team's spawn location
+
+local Players = game:GetService("Players")
+local Teams = game:GetService("Teams")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+-- Get or create teams
+local redTeam = Teams:FindFirstChild("Red Team")
+local blueTeam = Teams:FindFirstChild("Blue Team")
+
+if not redTeam then
+	redTeam = Instance.new("Team")
+	redTeam.Name = "Red Team"
+	redTeam.TeamColor = BrickColor.new("Bright red")
+	redTeam.AutoAssignable = false -- Prevent auto-assignment
+	redTeam.Parent = Teams
+end
+
+if not blueTeam then
+	blueTeam = Instance.new("Team")
+	blueTeam.Name = "Blue Team"
+	blueTeam.TeamColor = BrickColor.new("Bright blue")
+	blueTeam.AutoAssignable = false -- Prevent auto-assignment
+	blueTeam.Parent = Teams
+end
+
+-- Create RemoteEvent for team selection (if it doesn't exist)
+local SelectTeamEvent = ReplicatedStorage:FindFirstChild("SelectTeam")
+if not SelectTeamEvent then
+	SelectTeamEvent = Instance.new("RemoteEvent")
+	SelectTeamEvent.Name = "SelectTeam"
+	SelectTeamEvent.Parent = ReplicatedStorage
+end
+
+-- Handle team selection
+SelectTeamEvent.OnServerEvent:Connect(function(player, teamName)
+	-- Validate team name
+	if teamName ~= "Red Team" and teamName ~= "Blue Team" then
+		warn("Invalid team name: " .. tostring(teamName))
+		return
+	end
+
+	-- Get the selected team
+	local selectedTeam = Teams:FindFirstChild(teamName)
+	if not selectedTeam then
+		warn("Team not found: " .. tostring(teamName))
+		return
+	end
+
+	-- Assign player to team
+	player.Team = selectedTeam
+	print(player.Name .. " selected " .. teamName)
+
+	-- Kill the player so they respawn at team spawn
+	if player.Character and player.Character:FindFirstChild("Humanoid") then
+		player.Character.Humanoid.Health = 0
+	end
+end)
+
+-- Helper function to check if player needs to choose a team
+local function shouldShowTeamSelection(player)
+	if not player.Team then
+		return true
+	end
+	-- If player is on "Choosing" team, they need to select
+	if player.Team.Name == "Choosing" then
+		return true
+	end
+	return false
+end
+
+-- Cache spawn locations to avoid searching every time
+local spawnLocationCache = {}
+local cacheValid = false
+
+-- Recursive function to find all SpawnLocations
+local function findAllSpawnLocations(parent, foundLocations, depth)
+	depth = depth or 0
+	local maxDepth = 10 -- Prevent infinite recursion
+	
+	if depth > maxDepth then
+		return
+	end
+	
+	for _, child in ipairs(parent:GetChildren()) do
+		if child:IsA("SpawnLocation") then
+			table.insert(foundLocations, child)
+		elseif child:IsA("Model") or child:IsA("Folder") then
+			-- Recursively search in folders/models
+			findAllSpawnLocations(child, foundLocations, depth + 1)
+		end
+	end
+end
+
+-- Function to get all spawn locations (with caching)
+local function getAllSpawnLocations()
+	-- Always rebuild cache to ensure we get all spawns (spawns might be added after script loads)
+	spawnLocationCache = {}
+
+	-- Search in workspace (recursively)
+	findAllSpawnLocations(workspace, spawnLocationCache)
+
+	-- Also check Spawn service (some games use this)
+	local SpawnService = game:GetService("Spawn")
+	if SpawnService then
+		findAllSpawnLocations(SpawnService, spawnLocationCache)
+	end
+
+	cacheValid = true
+	if #spawnLocationCache > 0 then
+		print("  Found " .. #spawnLocationCache .. " spawn location(s):")
+		for _, spawn in ipairs(spawnLocationCache) do
+			print("    - " .. spawn.Name .. " at " .. spawn:GetFullName())
+		end
+	else
+		warn("  No spawn locations found in workspace!")
+	end
+	return spawnLocationCache
+end
+
+-- Helper function to check if a BrickColor matches red team colors
+local function isRedTeamColor(brickColor)
+	if not brickColor then return false end
+	local colorName = tostring(brickColor):lower()
+	return colorName:find("red") ~= nil
+end
+
+-- Helper function to check if a BrickColor matches blue team colors
+local function isBlueTeamColor(brickColor)
+	if not brickColor then return false end
+	local colorName = tostring(brickColor):lower()
+	return colorName:find("blue") ~= nil
+end
+
+-- Function to find team spawn location (FIXED - handles all red/blue color variations)
+local function findTeamSpawnLocation(teamColor, teamName)
+	-- Force cache rebuild to ensure we get all spawns
+	cacheValid = false
+	local allSpawnLocations = getAllSpawnLocations()
+	local teamSpawnLocation = nil
+
+	-- Determine if we're looking for red or blue
+	local isRedTeam = teamName:find("Red") ~= nil or isRedTeamColor(teamColor)
+	local isBlueTeam = teamName:find("Blue") ~= nil or isBlueTeamColor(teamColor)
+
+	print("  Searching for spawn for " .. teamName .. " (isRedTeam: " .. tostring(isRedTeam) .. ", isBlueTeam: " .. tostring(isBlueTeam) .. ")")
+
+	-- Search for matching spawn location
+	for _, spawnLocation in ipairs(allSpawnLocations) do
+		local spawnName = spawnLocation.Name
+		local spawnFullPath = spawnLocation:GetFullName()
+		local spawnTeamColor = spawnLocation.TeamColor
+		
+		-- Check if spawn matches team by EXACT full qualified name
+		local nameMatches = false
+		if isRedTeam then
+			-- Match: workspace.Spawnlocations.RedSpawnLocation or any path ending with RedSpawnLocation
+			if spawnFullPath:find("Spawnlocations%.RedSpawnLocation") or spawnFullPath:find("RedSpawnLocation$") then
+				nameMatches = true
+			end
+		elseif isBlueTeam then
+			-- Match: workspace.Spawnlocations.BlueSpawnLocation or any path ending with BlueSpawnLocation
+			if spawnFullPath:find("Spawnlocations%.BlueSpawnLocation") or spawnFullPath:find("BlueSpawnLocation$") then
+				nameMatches = true
+			end
+		end
+		
+		-- Check if spawn matches team by TeamColor
+		local colorMatches = false
+		if isRedTeam and isRedTeamColor(spawnTeamColor) then
+			colorMatches = true
+		elseif isBlueTeam and isBlueTeamColor(spawnTeamColor) then
+			colorMatches = true
+		end
+		
+		-- Debug: Print what we're checking
+		print("    Checking: " .. spawnLocation.Name .. " (Name matches: " .. tostring(nameMatches) .. ", Color matches: " .. tostring(colorMatches) .. ")")
+		
+		-- If either name or color matches, use this spawn
+		if nameMatches or colorMatches then
+			teamSpawnLocation = spawnLocation
+			print("  ✓ Found spawn location for " .. teamName .. ": " .. spawnLocation.Name .. " (Path: " .. spawnLocation:GetFullName() .. ")")
+			break
+		end
+	end
+
+	-- Debug: Print all available spawn locations if not found
+	if not teamSpawnLocation then
+		warn("Could not find spawn location for " .. teamName .. " (TeamColor: " .. tostring(teamColor) .. ")")
+		if #allSpawnLocations == 0 then
+			warn("No SpawnLocations found in workspace! Make sure you have SpawnLocation objects set up.")
+		else
+			print("Available SpawnLocations (" .. #allSpawnLocations .. " found):")
+			for _, spawnLocation in ipairs(allSpawnLocations) do
+				print("  - " .. spawnLocation.Name .. " (TeamColor: " .. tostring(spawnLocation.TeamColor) .. ", Neutral: " .. tostring(spawnLocation.Neutral) .. ", Path: " .. spawnLocation:GetFullName() .. ")")
+			end
+		end
+	end
+
+	return teamSpawnLocation
+end
+
+-- Function to teleport player to their team's spawn location
+local function teleportToTeamSpawn(player, character)
+	if not player.Team then
+		return false
+	end
+
+	-- Don't teleport if on "Choosing" team
+	if player.Team.Name == "Choosing" then
+		return false
+	end
+
+	-- Wait a moment for spawns to be fully loaded
+	task.wait(0.1)
+	
+	-- Always rebuild cache to ensure we get all spawns
+	cacheValid = false
+
+	-- Find the spawn location
+	print("  Looking for spawn for " .. player.Team.Name .. "...")
+	local teamSpawnLocation = findTeamSpawnLocation(player.Team.TeamColor, player.Team.Name)
+	if not teamSpawnLocation then
+		-- Try one more time after a longer delay (in case SpawnLocations are still loading)
+		task.wait(1.0)
+		cacheValid = false
+		print("  Retrying spawn search for " .. player.Team.Name .. "...")
+		teamSpawnLocation = findTeamSpawnLocation(player.Team.TeamColor, player.Team.Name)
+		if not teamSpawnLocation then
+			warn("Failed to find spawn for " .. player.Team.Name .. " after retry")
+			return false
+		end
+	end
+
+	-- Wait for character to fully load (try multiple times to ensure it works)
+	local humanoidRootPart = character:WaitForChild("HumanoidRootPart", 5)
+	if not humanoidRootPart then
+		warn("Could not find HumanoidRootPart for " .. player.Name)
+		return false
+	end
+
+	-- Wait a bit longer for character to be fully loaded and positioned
+	task.wait(0.3)
+
+	-- Get the target position
+	local targetCFrame = teamSpawnLocation.CFrame
+	local targetPosition = targetCFrame.Position
+
+	-- Teleport player to team spawn (try multiple times to ensure it sticks)
+	for i = 1, 5 do
+		if humanoidRootPart and humanoidRootPart.Parent then
+			humanoidRootPart.CFrame = targetCFrame
+			task.wait(0.15)
+
+			-- Verify the teleport worked (check if player is near the target location)
+			local currentPosition = humanoidRootPart.Position
+			local distance = (currentPosition - targetPosition).Magnitude
+
+			-- If player is within 10 studs of target, teleport was successful
+			if distance < 10 then
+				print(player.Name .. " spawned at " .. player.Team.Name .. " spawn location")
+				return true
+			else
+				-- Try again if not close enough
+				if i < 5 then
+					print("Retrying teleport for " .. player.Name .. " (attempt " .. i .. "/5)")
+				end
+			end
+		else
+			break
+		end
+	end
+
+	-- Final check - if still not at spawn, warn but don't fail
+	if humanoidRootPart and humanoidRootPart.Parent then
+		local currentPosition = humanoidRootPart.Position
+		local distance = (currentPosition - targetPosition).Magnitude
+		if distance < 10 then
+			print(player.Name .. " spawned at " .. player.Team.Name .. " spawn location")
+		else
+			warn(player.Name .. " may not have spawned at correct location (distance: " .. math.floor(distance) .. " studs)")
+		end
+	end
+
+	return true
+end
+
+-- Handle player joining - don't clear "Choosing" team, just let GUI show
+Players.PlayerAdded:Connect(function(player)
+	-- If player has no team, that's fine - GUI will show
+	-- If player is on "Choosing" team, that's also fine - GUI will show
+	-- Only clear if they're on an actual game team (Red/Blue) without selecting
+	if player.Team and player.Team.Name ~= "Choosing" and player.Team.Name ~= "Red Team" and player.Team.Name ~= "Blue Team" then
+		player.Team = nil
+		print(player.Name .. " joined - invalid team cleared")
+	elseif shouldShowTeamSelection(player) then
+		print(player.Name .. " joined - on choosing team or no team, GUI will show")
+	end
+
+	-- Handle character spawning (works for both initial spawn and respawns)
+	player.CharacterAdded:Connect(function(character)
+		-- Use task.spawn to handle teleport asynchronously
+		task.spawn(function()
+			-- Teleport to team spawn if player has a team
+			teleportToTeamSpawn(player, character)
+		end)
+	end)
+
+	-- Also handle respawns by listening to CharacterRemoving to ensure we catch all respawns
+	player.CharacterRemoving:Connect(function()
+		-- When character is removed, the next CharacterAdded will handle the respawn
+		-- This ensures we catch all respawn events
+	end)
+end)
+
+print("Team Selection Handler loaded!")
+

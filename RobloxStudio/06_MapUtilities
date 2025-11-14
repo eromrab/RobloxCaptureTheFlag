@@ -1,0 +1,93 @@
+-- EXPAND MAP WIDTH - Command Bar Script
+-- This script expands the baseplate along its shorter horizontal axis
+-- Run this in Roblox Studio Command Bar
+
+print("=== Expanding Map Width ===")
+
+-- Find Baseplate (search recursively like terrain script)
+local baseplate = workspace:FindFirstChild("Baseplate")
+if not baseplate then
+	baseplate = workspace:FindFirstChild("baseplate")
+end
+if not baseplate then
+	baseplate = workspace:FindFirstChild("BasePlate")
+end
+if not baseplate then
+	-- Search recursively
+	local function findBaseplateRecursive(parent)
+		for _, obj in ipairs(parent:GetChildren()) do
+			if obj:IsA("Part") and (obj.Name:lower():find("baseplate") or obj.Name:lower():find("base plate")) then
+				return obj
+			end
+			if obj:IsA("Model") or obj:IsA("Folder") then
+				local found = findBaseplateRecursive(obj)
+				if found then return found end
+			end
+		end
+		return nil
+	end
+	baseplate = findBaseplateRecursive(workspace)
+end
+
+if not baseplate then
+	warn("⚠ No Baseplate found!")
+	warn("  Searching workspace for all parts...")
+	local partCount = 0
+	for _, obj in ipairs(workspace:GetChildren()) do
+		if obj:IsA("Part") then
+			partCount = partCount + 1
+			print("    Found part: " .. obj.Name .. " | Size: " .. tostring(obj.Size))
+		end
+	end
+	if partCount == 0 then
+		print("    (No parts found directly in workspace)")
+	end
+	return
+end
+
+local baseplateSize = baseplate.Size
+local baseplatePos = baseplate.Position
+
+print("  Current baseplate size: " .. tostring(baseplateSize))
+print("  Current baseplate position: " .. tostring(baseplatePos))
+
+-- Determine which horizontal axis is shorter (X = width, Z = depth)
+local isXShorter = baseplateSize.X < baseplateSize.Z
+local shorterAxis = isXShorter and "X (width)" or "Z (depth)"
+local shorterSize = isXShorter and baseplateSize.X or baseplateSize.Z
+local longerSize = isXShorter and baseplateSize.Z or baseplateSize.X
+
+print("  Shorter axis: " .. shorterAxis .. " (" .. shorterSize .. " studs)")
+print("  Longer axis: " .. (isXShorter and "Z (depth)" or "X (width)") .. " (" .. longerSize .. " studs)")
+
+-- Ask how much to expand (or use a default)
+local expansionAmount = 200 -- Default: expand by 200 studs
+print("\n  💡 Expanding " .. shorterAxis .. " by " .. expansionAmount .. " studs...")
+
+-- Calculate new size
+local newSize
+if isXShorter then
+	newSize = Vector3.new(baseplateSize.X + expansionAmount, baseplateSize.Y, baseplateSize.Z)
+else
+	newSize = Vector3.new(baseplateSize.X, baseplateSize.Y, baseplateSize.Z + expansionAmount)
+end
+
+-- Position stays the same (expands equally in both directions)
+-- The baseplate will expand equally in both directions from its center
+local newPosition = baseplatePos
+
+print("\n  📐 New baseplate size: " .. tostring(newSize))
+print("  📍 Baseplate position: " .. tostring(newPosition) .. " (unchanged - expands equally)")
+
+-- Update baseplate
+baseplate.Size = newSize
+baseplate.Position = newPosition
+
+print("\n✓ Baseplate expanded!")
+print("  Old size: " .. tostring(baseplateSize))
+print("  New size: " .. tostring(newSize))
+print("\n💡 Next steps:")
+print("  1. Regenerate terrain using SculptTerrain_Script.lua")
+print("  2. Adjust walls using AddWalls_CommandBar.lua (Option 1)")
+print("  3. Adjust spawn locations if needed")
+

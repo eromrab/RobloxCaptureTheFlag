@@ -1,9 +1,12 @@
--- SCULPT TERRAIN - Command Bar Script
--- This script adds random terrain sculpting to the Baseplate using Terrain API
--- Creates smooth, rounded terrain with mirroring (like the part-based version)
--- Paste this into Roblox Studio Command Bar
+-- SCULPT TERRAIN - ServerScriptService Script
+-- Place this in: ServerScriptService
+-- This script automatically generates random terrain sculpting on the Baseplate when the game starts
+-- Creates smooth, rounded terrain with mirroring using the Terrain API
 
-print("=== Terrain Sculpting Script ===")
+-- Wait a moment for workspace to fully load
+task.wait(0.5)
+
+print("=== Terrain Sculpting Script (Auto-Run) ===")
 
 local RunService = game:GetService("RunService")
 local Terrain = workspace.Terrain
@@ -18,16 +21,16 @@ print("  ✓ Found Terrain")
 
 -- Configuration
 -- Zone-based height ranges (based on GameMap.txt layout: Base | Defend | Neutral | Defend | Base)
-local BASE_MIN_HEIGHT = 10 -- Base areas: minimum height (studs above baseplate top)
+local BASE_MIN_HEIGHT = 10 -- Base areas: minimum height (must be at least 10 to be above baseplate top)
 local BASE_MAX_HEIGHT = 40 -- Base areas: maximum height
-local DEFEND_MIN_HEIGHT = 10 -- Defend areas: minimum height
+local DEFEND_MIN_HEIGHT = 10 -- Defend areas: minimum height (must be at least 10 studs above baseplate top)
 local DEFEND_MAX_HEIGHT = 80 -- Defend areas: maximum height
-local NEUTRAL_MIN_HEIGHT = 10 -- Neutral area: minimum height
+local NEUTRAL_MIN_HEIGHT = 10 -- Neutral area: minimum height (must be at least 10 studs above baseplate top)
 local NEUTRAL_MAX_HEIGHT = 40 -- Neutral area: maximum height
 
 local SMOOTHNESS = 0.85 -- 0.0 = very random, 1.0 = very smooth (0.85 = very smooth with minimal variation)
 local CLIFF_CHANCE = 0.1 -- 10% chance for a cliff (steep change)
-local CLIFF_INTENSITY = 3.0 -- How dramatic cliffs are (multiplier)
+local CLIFF_INTENSITY = 2.0 -- How dramatic cliffs are (multiplier)
 local VOXEL_RESOLUTION = 4 -- Must be 4 for WriteVoxels
 local VOXEL_SIZE = 4 -- Each voxel cell is 4x4 studs at resolution 4
 
@@ -70,9 +73,32 @@ local baseplatePos = baseplate.Position
 local baseplateY = baseplatePos.Y
 local baseplateTop = baseplateY + (baseplateSize.Y / 2)
 
+-- Store spawn location relative positions BEFORE terrain generation
+local spawnRelativePositions = {}
+local function findSpawnLocationsForStorage(parent)
+	for _, obj in ipairs(parent:GetChildren()) do
+		if obj:IsA("SpawnLocation") then
+			local relativeX = obj.Position.X - baseplatePos.X
+			local relativeZ = obj.Position.Z - baseplatePos.Z
+			spawnRelativePositions[obj] = {
+				relativeX = relativeX,
+				relativeZ = relativeZ,
+				name = obj.Name
+			}
+		elseif obj:IsA("Folder") or obj:IsA("Model") then
+			findSpawnLocationsForStorage(obj)
+		end
+	end
+end
+findSpawnLocationsForStorage(workspace)
+
 -- Calculate grid dimensions (using voxel cells)
-local cellsX = math.ceil(baseplateSize.X / VOXEL_SIZE)
-local cellsZ = math.ceil(baseplateSize.Z / VOXEL_SIZE)
+-- Add margin to avoid terrain generation near walls (exclude 2 voxels from each edge = 8 studs)
+local WALL_MARGIN = 8 -- Studs to exclude from edges to avoid wall interference
+local effectiveSizeX = baseplateSize.X - (WALL_MARGIN * 2)
+local effectiveSizeZ = baseplateSize.Z - (WALL_MARGIN * 2)
+local cellsX = math.ceil(effectiveSizeX / VOXEL_SIZE)
+local cellsZ = math.ceil(effectiveSizeZ / VOXEL_SIZE)
 local midX = math.floor(cellsX / 2) -- Midpoint for mirroring
 
 -- Divide baseplate into 5 zones (Base | Defend | Neutral | Defend | Base)
@@ -228,12 +254,15 @@ print("  ✓ Height map generated!")
 
 -- Flatten terrain first before generating new
 print("\n🔄 Flattening terrain before generating new...")
--- Clear a much taller region to remove any old high terrain (use highest max height)
-local clearHeight = math.max(BASE_MAX_HEIGHT, DEFEND_MAX_HEIGHT, NEUTRAL_MAX_HEIGHT) + 50 -- Clear well above max height to remove old terrain
-local clearPosition = Vector3.new(baseplatePos.X, baseplateY + (clearHeight / 2), baseplatePos.Z)
-local clearSize = Vector3.new(baseplateSize.X, clearHeight, baseplateSize.Z)
+-- Clear all terrain from Y=100 and below
+local CLEAR_TOP_Y = 100 -- Clear everything from this Y level and below
+local CLEAR_BOTTOM_Y = -100 -- Clear down to this level (well below baseplate)
+local clearHeight = CLEAR_TOP_Y - CLEAR_BOTTOM_Y
+local clearPosition = Vector3.new(baseplatePos.X, (CLEAR_TOP_Y + CLEAR_BOTTOM_Y) / 2, baseplatePos.Z)
+local clearSize = Vector3.new(baseplateSize.X + 100, clearHeight, baseplateSize.Z + 100) -- Extra width to catch edge terrain
 local clearSuccess, clearError = pcall(function()
-	-- Clear with Air first (tall region to catch any old high terrain)
+	-- Clear with Air first (from Y=100 down to Y=-100)
+	print("  🗑️ Clearing terrain from Y=" .. CLEAR_TOP_Y .. " down to Y=" .. CLEAR_BOTTOM_Y .. "...")
 	Terrain:FillBlock(CFrame.new(clearPosition), clearSize, Enum.Material.Air)
 	
 	-- Then fill with flat grass at baseplate level
@@ -330,16 +359,20 @@ for z = 1, cellsZ do
 		-- Ensure height is at least the minimum of current zone (but can extend into neighbor zone)
 		height = math.max(zoneMin, height)
 		
-		-- Calculate world position for this cell
-		local worldX = baseplatePos.X - (baseplateSize.X / 2) + (x - 0.5) * VOXEL_SIZE
-		local worldZ = baseplatePos.Z - (baseplateSize.Z / 2) + (z - 0.5) * VOXEL_SIZE
+		-- Calculate world position for this cell (with wall margin offset)
+		local worldX = baseplatePos.X - (baseplateSize.X / 2) + WALL_MARGIN + (x - 0.5) * VOXEL_SIZE
+		local worldZ = baseplatePos.Z - (baseplateSize.Z / 2) + WALL_MARGIN + (z - 0.5) * VOXEL_SIZE
 		
-		-- Create solid terrain column from minimum height up to calculated height
-		-- This fills the entire column from the base to the top
+		-- Create solid terrain column from baseplate top up to calculated height
+		-- This fills the entire column from the baseplate surface to the top
 		-- Use the zone's minimum height for this cell
 		local zoneMin, zoneMax = getZoneHeightRange(x)
-		local columnHeight = height - zoneMin
-		local columnCenterY = baseplateY + zoneMin + (columnHeight / 2)
+		-- Column starts at baseplate top and goes up to the calculated height
+		-- Height is measured from baseplate top, so add baseplateTop to get world Y
+		local columnBottomY = baseplateTop
+		local columnTopY = baseplateTop + height
+		local columnHeight = columnTopY - columnBottomY
+		local columnCenterY = columnBottomY + (columnHeight / 2)
 		
 		-- Create terrain block that fills the entire column
 		local blockPosition = Vector3.new(worldX, columnCenterY, worldZ)
@@ -358,11 +391,64 @@ end
 print("  ✓ Created " .. blockCount .. " terrain blocks")
 print("  ✓ Terrain sculpting applied!")
 
--- Wait a moment for terrain to fully render before adjusting spawns
-task.wait(0.2)
+-- Fill the margin areas with flat terrain at baseplate level to avoid gaps
+print("\n🔄 Filling edge margins with flat terrain...")
+local marginFillCount = 0
 
--- Adjust spawn locations to sit on top of sculpted terrain using raycasting
-print("\n📍 Adjusting spawn locations to sculpted terrain...")
+-- Fill North edge (positive Z)
+local northMarginPosition = Vector3.new(baseplatePos.X, baseplateY + 2, baseplatePos.Z + (baseplateSize.Z / 2) - (WALL_MARGIN / 2))
+local northMarginSize = Vector3.new(baseplateSize.X, 4, WALL_MARGIN)
+local northSuccess = pcall(function()
+	Terrain:FillBlock(CFrame.new(northMarginPosition), northMarginSize, Enum.Material.Grass)
+end)
+if northSuccess then marginFillCount = marginFillCount + 1 end
+
+-- Fill South edge (negative Z)
+local southMarginPosition = Vector3.new(baseplatePos.X, baseplateY + 2, baseplatePos.Z - (baseplateSize.Z / 2) + (WALL_MARGIN / 2))
+local southMarginSize = Vector3.new(baseplateSize.X, 4, WALL_MARGIN)
+local southSuccess = pcall(function()
+	Terrain:FillBlock(CFrame.new(southMarginPosition), southMarginSize, Enum.Material.Grass)
+end)
+if southSuccess then marginFillCount = marginFillCount + 1 end
+
+-- Fill East edge (positive X - blue team side)
+local eastMarginPosition = Vector3.new(baseplatePos.X + (baseplateSize.X / 2) - (WALL_MARGIN / 2), baseplateY + 2, baseplatePos.Z)
+local eastMarginSize = Vector3.new(WALL_MARGIN, 4, baseplateSize.Z)
+local eastSuccess = pcall(function()
+	Terrain:FillBlock(CFrame.new(eastMarginPosition), eastMarginSize, Enum.Material.Grass)
+end)
+if eastSuccess then marginFillCount = marginFillCount + 1 end
+
+-- Fill West edge (negative X - red team side)
+local westMarginPosition = Vector3.new(baseplatePos.X - (baseplateSize.X / 2) + (WALL_MARGIN / 2), baseplateY + 2, baseplatePos.Z)
+local westMarginSize = Vector3.new(WALL_MARGIN, 4, baseplateSize.Z)
+local westSuccess = pcall(function()
+	Terrain:FillBlock(CFrame.new(westMarginPosition), westMarginSize, Enum.Material.Grass)
+end)
+if westSuccess then marginFillCount = marginFillCount + 1 end
+
+-- Fill corners (to ensure complete coverage)
+local cornerSize = Vector3.new(WALL_MARGIN, 4, WALL_MARGIN)
+-- North-East corner
+local neCornerPosition = Vector3.new(baseplatePos.X + (baseplateSize.X / 2) - (WALL_MARGIN / 2), baseplateY + 2, baseplatePos.Z + (baseplateSize.Z / 2) - (WALL_MARGIN / 2))
+pcall(function() Terrain:FillBlock(CFrame.new(neCornerPosition), cornerSize, Enum.Material.Grass) end)
+-- North-West corner
+local nwCornerPosition = Vector3.new(baseplatePos.X - (baseplateSize.X / 2) + (WALL_MARGIN / 2), baseplateY + 2, baseplatePos.Z + (baseplateSize.Z / 2) - (WALL_MARGIN / 2))
+pcall(function() Terrain:FillBlock(CFrame.new(nwCornerPosition), cornerSize, Enum.Material.Grass) end)
+-- South-East corner
+local seCornerPosition = Vector3.new(baseplatePos.X + (baseplateSize.X / 2) - (WALL_MARGIN / 2), baseplateY + 2, baseplatePos.Z - (baseplateSize.Z / 2) + (WALL_MARGIN / 2))
+pcall(function() Terrain:FillBlock(CFrame.new(seCornerPosition), cornerSize, Enum.Material.Grass) end)
+-- South-West corner
+local swCornerPosition = Vector3.new(baseplatePos.X - (baseplateSize.X / 2) + (WALL_MARGIN / 2), baseplateY + 2, baseplatePos.Z - (baseplateSize.Z / 2) + (WALL_MARGIN / 2))
+pcall(function() Terrain:FillBlock(CFrame.new(swCornerPosition), cornerSize, Enum.Material.Grass) end)
+
+print("  ✓ Filled " .. marginFillCount .. " edge margins with flat terrain")
+
+-- Wait a moment for terrain to fully render before adjusting spawns
+task.wait(5)
+
+-- Adjust spawn locations to sit on top of sculpted terrain (preserving relative positions)
+print("\n📍 Adjusting spawn locations to sculpted terrain (preserving relative positions)...")
 local spawnLocations = {}
 
 -- Search recursively for spawn locations (they might be in folders)
@@ -382,10 +468,21 @@ findSpawnLocations(workspace)
 if #spawnLocations > 0 then
 	print("  Found " .. #spawnLocations .. " spawn location(s)")
 	
+	-- Restore relative positions (stored at start of script) and adjust Y to terrain height
 	for _, spawnLoc in ipairs(spawnLocations) do
-		local spawnPos = spawnLoc.Position
-		local spawnX = spawnPos.X
-		local spawnZ = spawnPos.Z
+		local relativePos = spawnRelativePositions[spawnLoc]
+		if not relativePos then
+			-- Fallback to current position if not stored
+			relativePos = {
+				relativeX = spawnLoc.Position.X - baseplatePos.X,
+				relativeZ = spawnLoc.Position.Z - baseplatePos.Z,
+				name = spawnLoc.Name
+			}
+		end
+		
+		-- Restore relative X/Z position
+		local spawnX = baseplatePos.X + relativePos.relativeX
+		local spawnZ = baseplatePos.Z + relativePos.relativeZ
 		
 		-- Check if spawn is within baseplate bounds
 		local baseplateMinX = baseplatePos.X - (baseplateSize.X / 2)
@@ -428,31 +525,51 @@ if #spawnLocations > 0 then
 			local terrainTopY = baseplateY + height
 			local targetY = terrainTopY + 10 -- 10 studs above terrain top in this cell
 			
-			-- Ensure spawn can fall (unanchor and enable collision)
-			spawnLoc.Anchored = false
-			spawnLoc.CanCollide = true -- Enable collision so it can land on terrain
+			-- Set spawn properties (anchored, no collision as per user preference)
+			spawnLoc.Anchored = true
+			spawnLoc.CanCollide = false
 			
-			-- Wait for a physics frame to ensure unanchor is processed
-			RunService.Heartbeat:Wait()
-			
-			-- Place spawn high above target position so it has room to fall
-			local dropY = targetY + 100 -- Start 100 studs above target
-			spawnLoc.CFrame = CFrame.new(spawnX, dropY, spawnZ)
-			
-			-- Wait another frame to ensure position is set
-			RunService.Heartbeat:Wait()
+			-- Place spawn at relative position with adjusted Y
+			spawnLoc.CFrame = CFrame.new(spawnX, targetY, spawnZ)
 			
 			-- Get initial position for debug output
 			local finalY = spawnLoc.Position.Y
 			
 			-- Debug output
 			if isBaseZone then
-				print("  ✓ Adjusted " .. spawnLoc.Name .. " to Y = " .. string.format("%.2f", finalY) .. " (cell [" .. gridXIndex .. "," .. gridZIndex .. "], baseplateY: " .. string.format("%.2f", baseplateY) .. ", height: " .. BASE_MAX_HEIGHT .. ", terrainTop: " .. string.format("%.2f", terrainTopY) .. ", target: " .. string.format("%.2f", targetY) .. ")")
+				print("  ✓ Adjusted " .. spawnLoc.Name .. " to Y = " .. string.format("%.2f", finalY) .. " (relative X: " .. string.format("%.2f", relativePos.relativeX) .. ", Z: " .. string.format("%.2f", relativePos.relativeZ) .. ", cell [" .. gridXIndex .. "," .. gridZIndex .. "], height: " .. BASE_MAX_HEIGHT .. ")")
 			else
-				print("  ✓ Adjusted " .. spawnLoc.Name .. " to Y = " .. string.format("%.2f", finalY) .. " (cell [" .. gridXIndex .. "," .. gridZIndex .. "], baseplateY: " .. string.format("%.2f", baseplateY) .. ", height: " .. string.format("%.2f", height) .. ", terrainTop: " .. string.format("%.2f", terrainTopY) .. ", target: " .. string.format("%.2f", targetY) .. ")")
+				print("  ✓ Adjusted " .. spawnLoc.Name .. " to Y = " .. string.format("%.2f", finalY) .. " (relative X: " .. string.format("%.2f", relativePos.relativeX) .. ", Z: " .. string.format("%.2f", relativePos.relativeZ) .. ", cell [" .. gridXIndex .. "," .. gridZIndex .. "], height: " .. string.format("%.2f", height) .. ")")
 			end
 		else
-			print("  ⚠ " .. spawnLoc.Name .. " is outside baseplate bounds, skipping")
+			-- Spawn is outside baseplate bounds - still restore relative position but don't adjust Y
+			local relativePos = spawnRelativePositions[spawnLoc]
+			if relativePos then
+				-- Restore relative X/Z position
+				local spawnX = baseplatePos.X + relativePos.relativeX
+				local spawnZ = baseplatePos.Z + relativePos.relativeZ
+				-- Keep original Y or use a reasonable default
+				local spawnY = spawnLoc.Position.Y
+				-- If Y seems way off, try to find terrain
+				if spawnY < -100 or spawnY > 500 then
+					local rayOrigin = Vector3.new(spawnX, 500, spawnZ)
+					local rayDirection = Vector3.new(0, -1000, 0)
+					local raycastResult = workspace:Raycast(rayOrigin, rayDirection)
+					if raycastResult and raycastResult.Position.Y > -50 and raycastResult.Position.Y < 200 then
+						spawnY = raycastResult.Position.Y + 10
+					else
+						spawnY = 50 -- Reasonable default
+					end
+				end
+				spawnLoc.CFrame = CFrame.new(spawnX, spawnY, spawnZ)
+				spawnLoc.Anchored = true
+				spawnLoc.CanCollide = false
+				spawnLoc.Transparency = 0
+				spawnLoc.Enabled = true
+				print("  ✓ Restored " .. spawnLoc.Name .. " to relative position (outside baseplate, Y: " .. string.format("%.2f", spawnY) .. ")")
+			else
+				print("  ⚠ " .. spawnLoc.Name .. " is outside baseplate bounds and no relative position stored, skipping")
+			end
 		end
 	end
 else

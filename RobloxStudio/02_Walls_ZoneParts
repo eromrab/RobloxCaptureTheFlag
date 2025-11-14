@@ -151,31 +151,52 @@ local function addPerimeterWalls()
 	local halfSizeZ = baseplateSize.Z / 2
 	local wallY = baseplatePos.Y + (wallHeight / 2)
 	
-	-- North wall (positive Z)
+	-- Terrain margin (matches terrain generation - terrain is inset 8 studs from baseplate edges)
+	local TERRAIN_MARGIN = 8
+	
+	-- Calculate terrain boundaries (where terrain ends)
+	local terrainMinX = baseplatePos.X - halfSizeX + TERRAIN_MARGIN
+	local terrainMaxX = baseplatePos.X + halfSizeX - TERRAIN_MARGIN
+	local terrainMinZ = baseplatePos.Z - halfSizeZ + TERRAIN_MARGIN
+	local terrainMaxZ = baseplatePos.Z + halfSizeZ - TERRAIN_MARGIN
+	
+	-- North wall (positive Z) - positioned at terrain edge, extends to baseplate edge
+	local northWallX = baseplatePos.X
+	local northWallZ = terrainMaxZ + (wallThickness / 2) -- At terrain edge, slightly outward
+	local northWallWidth = baseplateSize.X + (wallThickness * 2) -- Spans full baseplate width
 	createWall(
-		Vector3.new(baseplatePos.X, wallY, baseplatePos.Z + halfSizeZ),
-		Vector3.new(baseplateSize.X + (wallThickness * 2), wallHeight, wallThickness),
+		Vector3.new(northWallX, wallY, northWallZ),
+		Vector3.new(northWallWidth, wallHeight, wallThickness),
 		"NorthWall"
 	)
 	
-	-- South wall (negative Z)
+	-- South wall (negative Z) - positioned at terrain edge, extends to baseplate edge
+	local southWallX = baseplatePos.X
+	local southWallZ = terrainMinZ - (wallThickness / 2) -- At terrain edge, slightly outward
+	local southWallWidth = baseplateSize.X + (wallThickness * 2) -- Spans full baseplate width
 	createWall(
-		Vector3.new(baseplatePos.X, wallY, baseplatePos.Z - halfSizeZ),
-		Vector3.new(baseplateSize.X + (wallThickness * 2), wallHeight, wallThickness),
+		Vector3.new(southWallX, wallY, southWallZ),
+		Vector3.new(southWallWidth, wallHeight, wallThickness),
 		"SouthWall"
 	)
 	
-	-- East wall (positive X)
+	-- East wall (positive X - blue team side) - positioned at terrain edge, extends to baseplate edge
+	local eastWallX = terrainMaxX + (wallThickness / 2) -- At terrain edge, slightly outward
+	local eastWallZ = baseplatePos.Z
+	local eastWallDepth = baseplateSize.Z -- Spans full baseplate depth
 	createWall(
-		Vector3.new(baseplatePos.X + halfSizeX, wallY, baseplatePos.Z),
-		Vector3.new(wallThickness, wallHeight, baseplateSize.Z),
+		Vector3.new(eastWallX, wallY, eastWallZ),
+		Vector3.new(wallThickness, wallHeight, eastWallDepth),
 		"EastWall"
 	)
 	
-	-- West wall (negative X)
+	-- West wall (negative X - red team side) - positioned at terrain edge, extends to baseplate edge
+	local westWallX = terrainMinX - (wallThickness / 2) -- At terrain edge, slightly outward
+	local westWallZ = baseplatePos.Z
+	local westWallDepth = baseplateSize.Z -- Spans full baseplate depth
 	createWall(
-		Vector3.new(baseplatePos.X - halfSizeX, wallY, baseplatePos.Z),
-		Vector3.new(wallThickness, wallHeight, baseplateSize.Z),
+		Vector3.new(westWallX, wallY, westWallZ),
+		Vector3.new(wallThickness, wallHeight, westWallDepth),
 		"WestWall"
 	)
 	

@@ -1,0 +1,122 @@
+-- Command Bar script to record all spawn location positions
+-- Run this after manually positioning spawns to capture their locations
+-- Paste this into Roblox Studio Command Bar
+
+print("=== Recording Spawn Location Positions ===")
+
+-- Find baseplate
+local function findBaseplateRecursive(parent)
+	for _, obj in ipairs(parent:GetChildren()) do
+		if obj:IsA("Part") and (obj.Name:lower():find("baseplate") or obj.Name:lower():find("base plate")) then
+			return obj
+		end
+		if obj:IsA("Model") or obj:IsA("Folder") then
+			local found = findBaseplateRecursive(obj)
+			if found then return found end
+		end
+	end
+	return nil
+end
+
+local baseplate = workspace:FindFirstChild("Baseplate")
+if not baseplate then
+	baseplate = workspace:FindFirstChild("baseplate")
+end
+if not baseplate then
+	baseplate = workspace:FindFirstChild("BasePlate")
+end
+if not baseplate then
+	baseplate = findBaseplateRecursive(workspace)
+end
+
+if not baseplate then
+	warn("⚠ Baseplate not found!")
+	return
+end
+
+local baseplatePos = baseplate.Position
+print("  ✓ Found baseplate at: " .. tostring(baseplatePos))
+print("")
+
+-- Find all spawn locations
+local spawnLocations = {}
+
+local function findSpawnLocationsRecursive(parent)
+	for _, obj in ipairs(parent:GetChildren()) do
+		if obj:IsA("SpawnLocation") then
+			table.insert(spawnLocations, obj)
+		elseif obj:IsA("Folder") or obj:IsA("Model") then
+			findSpawnLocationsRecursive(obj)
+		end
+	end
+end
+
+findSpawnLocationsRecursive(workspace)
+
+if #spawnLocations == 0 then
+	warn("⚠ No spawn locations found!")
+	return
+end
+
+print("  ✓ Found " .. #spawnLocations .. " spawn location(s)")
+print("")
+
+-- Record positions
+print("=== RECORDED SPAWN LOCATION POSITIONS ===")
+print("")
+print("-- Copy this data for reference:")
+print("")
+
+for _, spawnLoc in ipairs(spawnLocations) do
+	local spawnPos = spawnLoc.Position
+	local relativeX = spawnPos.X - baseplatePos.X
+	local relativeZ = spawnPos.Z - baseplatePos.Z
+	
+	print("Spawn: " .. spawnLoc.Name)
+	print("  Absolute Position: " .. tostring(spawnPos))
+	print("  Relative to Baseplate Center:")
+	print("    X offset: " .. string.format("%.2f", relativeX) .. " studs")
+	print("    Z offset: " .. string.format("%.2f", relativeZ) .. " studs")
+	print("    Y position: " .. string.format("%.2f", spawnPos.Y) .. " studs")
+	print("  Properties:")
+	print("    Anchored: " .. tostring(spawnLoc.Anchored))
+	print("    CanCollide: " .. tostring(spawnLoc.CanCollide))
+	print("    Enabled: " .. tostring(spawnLoc.Enabled))
+	print("    Transparency: " .. string.format("%.2f", spawnLoc.Transparency))
+	if spawnLoc.TeamColor then
+		print("    TeamColor: " .. tostring(spawnLoc.TeamColor))
+	end
+	print("    Parent: " .. (spawnLoc.Parent and spawnLoc.Parent.Name or "nil"))
+	print("")
+end
+
+-- Create a formatted data structure
+print("=== FORMATTED DATA (for script use) ===")
+print("")
+print("local spawnRecordedPositions = {")
+for i, spawnLoc in ipairs(spawnLocations) do
+	local spawnPos = spawnLoc.Position
+	local relativeX = spawnPos.X - baseplatePos.X
+	local relativeZ = spawnPos.Z - baseplatePos.Z
+	local comma = (i < #spawnLocations) and "," or ""
+	
+	print("  [\"" .. spawnLoc.Name .. "\"] = {")
+	print("    relativeX = " .. string.format("%.6f", relativeX) .. comma)
+	print("    relativeZ = " .. string.format("%.6f", relativeZ) .. comma)
+	print("    absoluteY = " .. string.format("%.6f", spawnPos.Y) .. comma)
+	print("    anchored = " .. tostring(spawnLoc.Anchored) .. comma)
+	print("    canCollide = " .. tostring(spawnLoc.CanCollide) .. comma)
+	print("    enabled = " .. tostring(spawnLoc.Enabled) .. comma)
+	print("    transparency = " .. string.format("%.2f", spawnLoc.Transparency) .. comma)
+	if spawnLoc.TeamColor then
+		print("    teamColor = BrickColor.new(\"" .. tostring(spawnLoc.TeamColor) .. "\")" .. comma)
+	end
+	print("    parentName = \"" .. (spawnLoc.Parent and spawnLoc.Parent.Name or "workspace") .. "\"" .. comma)
+	print("  }" .. comma)
+end
+print("}")
+print("")
+
+print("✅ Recording complete!")
+print("💡 These relative positions will be preserved when running RegenerateMapToBaseplate_CommandBar.lua")
+
